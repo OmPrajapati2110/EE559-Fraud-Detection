@@ -240,6 +240,25 @@ yielding a net saving of \euro130. Table~\ref{tab:cost} summarises the threshold
   \end{tabular}
 \end{table}
 
+\begin{figure*}[!t]
+  \centering
+  \includegraphics[width=\textwidth]{figures/fig_11_threshold_tuning.png}
+  \caption{F1-score, Precision, and Recall vs.\ decision threshold for all four models
+           on the validation set. Dots mark the F1-maximising threshold per model.
+           Note the wide variation in optimal thresholds across model families.}
+  \label{fig:threshold}
+\end{figure*}
+
+\begin{figure*}[!t]
+  \centering
+  \includegraphics[width=0.96\textwidth]{figures/fig_12_cost_analysis.png}
+  \caption{Left: total business cost (\euro500\,$\times$\,FN\,+\,\euro10\,$\times$\,FP)
+           vs.\ threshold for all models (validation set); dots mark cost-minimising
+           thresholds. Right: F1-optimal vs.\ cost-optimal thresholds per model ---
+           cost-optimal thresholds are consistently lower due to the 50:1 FN/FP penalty.}
+  \label{fig:cost}
+\end{figure*}
+
 \subsection{Final Test Set Evaluation}
 \label{sec:test}
 
@@ -267,6 +286,16 @@ losses; the 11 false alarms add \euro110 in review costs (total: \euro6,610).
     \bottomrule
   \end{tabular}
 \end{table}
+
+\begin{figure*}[!t]
+  \centering
+  \includegraphics[width=\textwidth]{figures/fig_13_final_test_evaluation.png}
+  \caption{Final test-set evaluation for RF (balanced) at threshold 0.192.
+           Left: confusion matrix (61\,TP, 11\,FP, 13\,FN, 42,637\,TN).
+           Centre: ROC curve (AUC\,=\,0.9376).
+           Right: Precision-Recall curve (AUC\,=\,0.8116).}
+  \label{fig:test_eval}
+\end{figure*}
 
 % ─────────────────────────────────────────────────────────────────────────────
 \section{Error Analysis}
@@ -328,37 +357,6 @@ evaluation. Random Forest with balanced class weights and a tuned threshold of
 test set. A key finding is that threshold selection under asymmetric business
 costs yields a meaningfully different operating point than F1 maximisation,
 highlighting the importance of tying model evaluation to concrete cost assumptions.
-
-% ── Figures ──────────────────────────────────────────────────────────────────
-
-\begin{figure*}[t]
-  \centering
-  \includegraphics[width=\textwidth]{figures/fig_11_threshold_tuning.png}
-  \caption{F1-score, Precision, and Recall vs.\ decision threshold for all four models
-           on the validation set. Dots mark the F1-maximising threshold per model.
-           Note the wide variation in optimal thresholds across model families.}
-  \label{fig:threshold}
-\end{figure*}
-
-\begin{figure*}[t]
-  \centering
-  \includegraphics[width=0.96\textwidth]{figures/fig_12_cost_analysis.png}
-  \caption{Left: total business cost (\euro500\,$\times$\,FN\,+\,\euro10\,$\times$\,FP)
-           vs.\ threshold for all models (validation set); dots mark cost-minimising
-           thresholds. Right: F1-optimal vs.\ cost-optimal thresholds per model ---
-           cost-optimal thresholds are consistently lower due to the 50:1 FN/FP penalty.}
-  \label{fig:cost}
-\end{figure*}
-
-\begin{figure*}[t]
-  \centering
-  \includegraphics[width=\textwidth]{figures/fig_13_final_test_evaluation.png}
-  \caption{Final test-set evaluation for RF (balanced) at threshold 0.192.
-           Left: confusion matrix (61\,TP, 11\,FP, 13\,FN, 42,637\,TN).
-           Centre: ROC curve (AUC\,=\,0.9376).
-           Right: Precision-Recall curve (AUC\,=\,0.8116).}
-  \label{fig:test_eval}
-\end{figure*}
 
 % ─────────────────────────────────────────────────────────────────────────────
 \begin{thebibliography}{9}
