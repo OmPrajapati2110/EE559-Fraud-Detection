@@ -1,0 +1,366 @@
+\documentclass[11pt, a4paper]{article}
+
+% ── Page layout ───────────────────────────────────────────────────────────────
+\usepackage[top=0.9in, bottom=0.9in, left=1.1in, right=1.1in]{geometry}
+
+% ── Typography ────────────────────────────────────────────────────────────────
+\usepackage{mathptmx}
+\usepackage{microtype}
+\usepackage{parskip}
+\setlength{\parskip}{5pt}
+
+% ── Mathematics ───────────────────────────────────────────────────────────────
+\usepackage{amsmath}
+\usepackage{amssymb}
+
+% ── Figures and tables ────────────────────────────────────────────────────────
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{caption}
+\captionsetup{font=small, labelfont=bf}
+
+% ── Section formatting ────────────────────────────────────────────────────────
+\usepackage{titlesec}
+\titleformat{\section}{\large\bfseries}{\thesection.}{0.6em}{}
+\titleformat{\subsection}{\normalsize\bfseries}{\thesubsection.}{0.5em}{}
+\titlespacing*{\section}{0pt}{12pt}{5pt}
+\titlespacing*{\subsection}{0pt}{8pt}{3pt}
+
+% ── Hyperlinks ────────────────────────────────────────────────────────────────
+\usepackage[colorlinks=true, linkcolor=black, citecolor=black, urlcolor=blue]{hyperref}
+
+% ── Miscellaneous ─────────────────────────────────────────────────────────────
+\usepackage{enumitem}
+\setlist[itemize]{noitemsep, topsep=2pt}
+\setlist[enumerate]{noitemsep, topsep=2pt}
+\usepackage{xcolor}
+\usepackage{fancyhdr}
+
+\pagestyle{fancy}
+\fancyhf{}
+\rhead{\small EE559 --- Final Project Report}
+\lhead{\small Om Suresh Prajapati}
+\cfoot{\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\begin{document}
+
+% ── Title block ──────────────────────────────────────────────────────────────
+\begin{center}
+    {\LARGE \textbf{Adaptive Fraud Detection with Dynamic Thresholding\\
+    and Cost-Sensitive Learning}}\\[0.5em]
+    {\large \textbf{Om Suresh Prajapati}} \quad|\quad USC ID: 1430823821\\[0.15em]
+    \textit{EE559 (CSCI 559) --- Machine Learning, Spring 2026}\\[0.15em]
+    \textit{Instructor: Prof.\ Anand A.\ Joshi, University of Southern California}\\[0.15em]
+    May 4, 2026
+\end{center}
+
+\vspace{0.3em}
+\hrule
+\vspace{0.5em}
+
+% ── Abstract ─────────────────────────────────────────────────────────────────
+\noindent\textbf{Abstract} --- We present a complete supervised ML pipeline for credit
+card fraud detection on the Kaggle Credit Card Fraud dataset (284,807 transactions;
+0.17\% fraud prevalence). Three classifiers are trained and compared: Logistic
+Regression (LR), Random Forest (RF), and Histogram-based Gradient Boosted Trees (GBT).
+Three class-imbalance strategies are evaluated: balanced class weighting, SMOTE, and
+random under-sampling. We introduce dynamic threshold tuning on the validation set and
+a cost-sensitive evaluation framework (FN\,=\,\euro500 vs.\ FP\,=\,\euro10). The best
+model---RF with balanced class weights at a tuned threshold of 0.192---achieves
+\textbf{PR-AUC\,=\,0.8116}, \textbf{Recall\,=\,82.4\%}, and
+\textbf{Precision\,=\,84.7\%} on the held-out test set.
+
+\vspace{0.3em}
+\hrule
+\vspace{0.5em}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Introduction}
+
+Credit card fraud causes billions of euros in annual losses. Automated detection
+reduces this, but the problem presents two fundamental challenges. First, the
+extreme class imbalance (577:1 in this dataset) renders standard accuracy
+uninformative: labelling every transaction as legitimate achieves 99.83\% accuracy
+while catching zero fraud. Second, the two error types carry asymmetric costs:
+a missed fraud (false negative, FN) costs far more than a false alarm (false
+positive, FP) that triggers a manual review.
+
+This work addresses both challenges through appropriate primary metrics
+(PR-AUC and ROC-AUC), three imbalance-handling strategies, and a cost-sensitive
+threshold selection procedure that minimises expected business cost on the
+validation set.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Dataset and Preprocessing}
+
+\subsection{Dataset}
+
+The Kaggle Credit Card Fraud Detection dataset~\cite{kaggle_ccfd} contains 284,807
+European cardholder transactions (September 2013), with 492 fraud cases (0.173\%).
+Features \texttt{V1}--\texttt{V28} are anonymised PCA components (zero-mean,
+decorrelated); \texttt{Time} and \texttt{Amount} are in original units.
+No missing values; 1,081 duplicate rows retained.
+
+\subsection{Preprocessing Pipeline}
+
+The following strict ordering prevents data leakage:
+\begin{enumerate}
+    \item \textbf{Split first.} Stratified 70/15/15 train/validation/test split
+          (199,356 / 42,729 / 42,722 samples), preserving 0.173\% fraud in each subset.
+    \item \textbf{Scale on train only.} \texttt{StandardScaler} fitted on
+          \texttt{Time} and \texttt{Amount} from training data; applied to all splits.
+          Features \texttt{V1}--\texttt{V28} require no re-scaling (PCA output).
+    \item \textbf{Resample train only.} SMOTE and under-sampling applied within the
+          training split only, never touching validation or test.
+\end{enumerate}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Methodology}
+
+\subsection{Models}
+
+\textbf{Logistic Regression (LR).}
+Linear baseline optimising cross-entropy with L2 regularisation ($C$\,=\,1.0).
+\texttt{class\_weight=`balanced'} reweights each fraud sample by
+$\approx$577$\times$ relative to legitimate samples.
+
+\textbf{Random Forest (RF).}
+Ensemble of 100 trees trained on bootstrap samples with random feature subsets.
+Captures nonlinear feature interactions; same balanced class weighting.
+
+\textbf{Gradient Boosted Trees (GBT).}
+\texttt{HistGradientBoostingClassifier} (sklearn, 200 iterations). Additively builds
+trees to correct ensemble residuals. Two variants: balanced class weighting (GBT-bal)
+and SMOTE-resampled training data (GBT-SMOTE).
+
+\subsection{Imbalance Handling}
+
+Three strategies were compared on LR to isolate resampling effects:
+(1)~\texttt{class\_weight=`balanced'}; (2)~SMOTE~\cite{chawla2002smote}, which
+interpolates between minority samples to achieve 1:1 training ratio; and
+(3)~random under-sampling, which discards majority samples until 1:1.
+
+\subsection{Threshold Tuning and Cost-Sensitive Evaluation}
+
+For threshold $t$, predicted class is $\hat{y} = \mathbf{1}[\hat{p} \geq t]$.
+We sweep $t \in [0.01, 0.99]$ (200 steps) on the validation set and report:
+
+\begin{itemize}
+    \item \textbf{F1-optimal threshold:} $t^*_{\text{F1}} = \arg\max_t \text{F1}(t)$
+    \item \textbf{Cost-optimal threshold:}
+          $t^*_{\text{cost}} = \arg\min_t \left[\text{FN}(t)\cdot C_{\text{FN}} + \text{FP}(t)\cdot C_{\text{FP}}\right]$
+\end{itemize}
+
+with $C_{\text{FN}} = 500$\,\euro{} (average fraud loss) and $C_{\text{FP}} = 10$\,\euro{}
+(manual review cost per transaction). All threshold selection is done on the validation
+set; the test set is evaluated exactly once.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Results}
+
+\subsection{Resampling Strategy Comparison}
+
+Table~\ref{tab:resampling} shows LR performance under the three imbalance strategies
+at the default threshold of 0.50. Class weighting and SMOTE achieve similar PR-AUC;
+random under-sampling underperforms due to the large information loss from discarding
+199,012 majority-class training samples (99.8\% of legitimate transactions). SMOTE
+is therefore applied to GBT as the secondary variant.
+
+\begin{table}[ht]
+    \centering
+    \caption{Resampling strategy comparison on LR (validation set, threshold\,=\,0.50).}
+    \label{tab:resampling}
+    \begin{tabular}{lccc}
+        \toprule
+        \textbf{Strategy} & \textbf{PR-AUC} & \textbf{Recall} & \textbf{Fraud F1} \\
+        \midrule
+        Class weight   & 0.7520 & 0.9189 & 0.1265 \\
+        SMOTE          & 0.7599 & 0.9324 & 0.1209 \\
+        Under-sampling & 0.6986 & 0.9324 & 0.0865 \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\subsection{Model Comparison at F1-Optimal Threshold}
+
+Table~\ref{tab:models} compares all model variants at their respective F1-optimal
+thresholds on the validation set. RF achieves the highest PR-AUC (0.8637), confirming
+that nonlinear feature interactions are important for fraud detection.
+GBT-SMOTE achieves the highest F1 (0.8794) but at a lower PR-AUC (0.8533).
+LR lags substantially on both PR-AUC and F1.
+
+The F1-optimal thresholds vary widely: RF finds its optimum at 0.192 (well below
+the default 0.5), while LR requires 0.990. This divergence reflects differences in
+probability calibration across model families.
+
+\begin{table}[ht]
+    \centering
+    \caption{All models at their F1-optimal thresholds (validation set). Best values in bold.}
+    \label{tab:models}
+    \setlength{\tabcolsep}{5pt}
+    \begin{tabular}{lcccccc}
+        \toprule
+        \textbf{Model} & \textbf{PR-AUC} & \textbf{ROC-AUC}
+            & \textbf{Thr.} & \textbf{F1} & \textbf{Recall} & \textbf{Prec.} \\
+        \midrule
+        LR (bal.)           & 0.7520 & 0.9860 & 0.990 & 0.7273 & 0.8649 & 0.6275 \\
+        \textbf{RF (bal.)}  & \textbf{0.8637} & 0.9514 & \textbf{0.192}
+                            & 0.8767 & \textbf{0.8649} & 0.8889 \\
+        GBT (bal.)          & 0.7840 & \textbf{0.9822} & 0.951 & 0.8531 & 0.8243 & 0.8841 \\
+        GBT (SMOTE)         & 0.8533 & 0.9729 & 0.960 & \textbf{0.8794} & 0.8378 & \textbf{0.9254} \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\subsection{Threshold Tuning and Cost Analysis}
+
+Figure~\ref{fig:threshold} shows F1, Precision, and Recall as a function of threshold
+for all models. Figure~\ref{fig:cost} shows total business cost vs.\ threshold.
+Because $C_{\text{FN}} \gg C_{\text{FP}}$ (50:1), the cost-optimal thresholds are
+substantially lower than the F1-optimal thresholds across all models---the system
+prefers flagging more transactions (higher FP) to avoid missing fraud (lower FN).
+
+For RF, the cost-optimal threshold drops to 0.044, catching one additional fraud
+(FN: $13 \to 12$) while increasing FP from 11 to 48, for a net saving of \euro130
+(\euro6{,}480 vs.\ \euro6{,}610). Table~\ref{tab:cost} summarises the comparison.
+
+\begin{table}[ht]
+    \centering
+    \caption{F1-optimal vs.\ cost-optimal threshold analysis for all models on validation set.}
+    \label{tab:cost}
+    \setlength{\tabcolsep}{4pt}
+    \begin{tabular}{lcc}
+        \toprule
+        \textbf{Model} & \textbf{F1-opt.\ Thr.} & \textbf{Cost-opt.\ Thr.} \\
+        \midrule
+        LR (balanced)  & 0.990 & 0.985 \\
+        RF (balanced)  & 0.192 & 0.044 \\
+        GBT (balanced) & 0.951 & 0.837 \\
+        GBT (SMOTE)    & 0.960 & 0.251 \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\subsection{Final Test Set Evaluation}
+
+RF (balanced) was selected as the best model by validation PR-AUC\,=\,0.8637.
+Table~\ref{tab:test} reports test-set performance at both thresholds.
+
+\begin{table}[ht]
+    \centering
+    \caption{RF (balanced) on the held-out test set (74 fraud; 42,648 legitimate).}
+    \label{tab:test}
+    \setlength{\tabcolsep}{5pt}
+    \begin{tabular}{lcccccc}
+        \toprule
+        \textbf{Threshold} & \textbf{ROC-AUC} & \textbf{PR-AUC}
+            & \textbf{F1} & \textbf{Recall} & \textbf{Prec.} & \textbf{Cost (\euro)} \\
+        \midrule
+        0.192 (F1-opt.)  & 0.9376 & 0.8116 & 0.8356 & 0.8243 & 0.8472 & 6{,}610 \\
+        0.044 (cost-opt.)& 0.9376 & 0.8116 & 0.6739 & 0.8378 & 0.5636 & 6{,}480 \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+At the F1-optimal threshold the model catches 61 of 74 frauds (82.4\% recall)
+with only 11 false alarms. Figure~\ref{fig:test_eval} shows the confusion matrix,
+ROC curve, and Precision-Recall curve on the test set.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Error Analysis}
+
+The 13 false negatives (missed frauds at threshold 0.192) had a mean model score of
+0.021, vs.\ 0.826 for detected frauds. Feature-distribution analysis of top
+discriminative features (\texttt{V14}, \texttt{V17}, \texttt{V12}) shows that
+missed frauds have values close to the legitimate distribution, indicating they are
+genuinely ambiguous cases rather than model failures. Their transaction amounts were
+slightly lower than detected frauds, consistent with small test charges being harder
+to distinguish from low-value legitimate transactions. The 11 false positives had
+a mean score of 0.44, just above the decision threshold, suggesting they are
+legitimate transactions with unusual PCA projections resembling known fraud signatures.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Discussion and Conclusions}
+
+\paragraph{Nonlinear models are essential.}
+RF and GBT outperform LR by 0.11 PR-AUC, confirming that fraud signals arise from
+nonlinear feature combinations that a linear boundary cannot capture.
+
+\paragraph{Threshold tuning is as important as model choice.}
+Dynamic tuning of the RF threshold from 0.50 to 0.192 improves F1 from 0.8613 to
+0.8767 on the validation set with no model change.
+
+\paragraph{Cost-sensitive analysis changes the operating point.}
+The 50:1 FN/FP cost ratio shifts the RF optimal threshold from 0.192 to 0.044.
+Whether this trade-off is acceptable depends on the institution's capacity for
+manual fraud review.
+
+\paragraph{SMOTE vs.\ class weighting.}
+Both achieve similar PR-AUC on LR (+0.008 for SMOTE). On GBT, class weighting
+yields higher PR-AUC while SMOTE yields higher F1; class weighting appears better
+calibrated across all thresholds.
+
+\paragraph{Limitations and future work.}
+Features \texttt{V1}--\texttt{V28} are opaque PCA components; future work with raw
+transaction features would enable actionable model explanations. Hyperparameter tuning
+(grid search over tree depth, learning rate) and time-aware cross-validation (respecting
+temporal ordering) remain as extensions. Online learning~\cite{pozzolo2014} could
+address distribution shift as fraud strategies evolve.
+
+% ── Figures ──────────────────────────────────────────────────────────────────
+
+\begin{figure}[ht]
+    \centering
+    \includegraphics[width=0.95\textwidth]{figures/fig_11_threshold_tuning.png}
+    \caption{F1-score, Precision, and Recall vs.\ decision threshold for all four models on
+             the validation set. Dots mark the F1-maximising threshold per model.}
+    \label{fig:threshold}
+\end{figure}
+
+\begin{figure}[ht]
+    \centering
+    \includegraphics[width=0.92\textwidth]{figures/fig_12_cost_analysis.png}
+    \caption{Left: Total business cost vs.\ threshold for all models (validation set).
+             Right: Comparison of F1-optimal vs.\ cost-optimal thresholds. Cost-optimal
+             thresholds are consistently lower due to the 50:1 FN/FP cost ratio.}
+    \label{fig:cost}
+\end{figure}
+
+\begin{figure}[ht]
+    \centering
+    \includegraphics[width=0.95\textwidth]{figures/fig_13_final_test_evaluation.png}
+    \caption{Final test set evaluation for RF (balanced) at threshold 0.192.
+             Confusion matrix (61 TP, 11 FP, 13 FN, 42,637 TN),
+             ROC curve (AUC\,=\,0.9376), and PR curve (AUC\,=\,0.8116).}
+    \label{fig:test_eval}
+\end{figure}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\begin{thebibliography}{9}
+
+\bibitem{kaggle_ccfd}
+    ULB Machine Learning Group,
+    \textit{Credit Card Fraud Detection Dataset},
+    Kaggle, 2018.
+    \url{https://www.kaggle.com/datasets/mlg-ulb/creditcardfraud}
+
+\bibitem{chawla2002smote}
+    N.V. Chawla, K.W. Bowyer, L.O. Hall, W.P. Kegelmeyer,
+    ``SMOTE: Synthetic Minority Over-sampling Technique,''
+    \textit{J.\ Artificial Intelligence Research}, 16:321--357, 2002.
+
+\bibitem{sklearn}
+    F. Pedregosa et al.,
+    ``Scikit-learn: Machine Learning in Python,''
+    \textit{J.\ Machine Learning Research}, 12:2825--2830, 2011.
+
+\bibitem{pozzolo2014}
+    A. Dal Pozzolo, O. Caelen, R.A. Johnson, G. Bontempi,
+    ``Calibrating Probability with Undersampling for Unbalanced Classification,''
+    \textit{IEEE SSCI}, 2015.
+
+\end{thebibliography}
+
+\end{document}

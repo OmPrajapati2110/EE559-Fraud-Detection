@@ -1,0 +1,317 @@
+\documentclass[11pt, a4paper]{article}
+
+% ── Page layout ───────────────────────────────────────────────────────────────
+\usepackage[top=1in, bottom=1in, left=1.1in, right=1.1in]{geometry}
+
+% ── Typography ────────────────────────────────────────────────────────────────
+\usepackage{mathptmx}          % Times New Roman font
+\usepackage{microtype}         % Better justification
+\usepackage{parskip}           % Space between paragraphs instead of indent
+\setlength{\parskip}{6pt}
+
+% ── Mathematics ───────────────────────────────────────────────────────────────
+\usepackage{amsmath}
+\usepackage{amssymb}
+
+% ── Figures and tables ────────────────────────────────────────────────────────
+\usepackage{graphicx}
+\graphicspath{figures/}
+\usepackage{booktabs}
+\usepackage{caption}
+\captionsetup{font=small, labelfont=bf}
+
+% ── Section formatting ────────────────────────────────────────────────────────
+\usepackage{titlesec}
+\titleformat{\section}{\large\bfseries}{\thesection.}{0.6em}{}
+\titleformat{\subsection}{\normalsize\bfseries}{\thesubsection.}{0.5em}{}
+\titlespacing*{\section}{0pt}{14pt}{6pt}
+\titlespacing*{\subsection}{0pt}{10pt}{4pt}
+
+% ── Hyperlinks ────────────────────────────────────────────────────────────────
+\usepackage[colorlinks=true, linkcolor=black, citecolor=black, urlcolor=blue]{hyperref}
+
+% ── Miscellaneous ─────────────────────────────────────────────────────────────
+\usepackage{enumitem}
+\setlist[itemize]{noitemsep, topsep=3pt}
+\usepackage{xcolor}
+\usepackage{fancyhdr}
+
+\pagestyle{fancy}
+\fancyhf{}
+\rhead{\small EE559 — Midway Progress Report}
+\lhead{\small Om Suresh Prajapati}
+\cfoot{\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\begin{document}
+
+\begin{center}
+    {\LARGE \textbf{Midway Progress Report}}\\[0.4em]
+    {\large Adaptive Fraud Detection with Dynamic Thresholding\\
+    and Cost-Sensitive Learning}\\[0.6em]
+    \textbf{Om Suresh Prajapati} \quad | \quad USC ID: 1430823821\\[0.2em]
+    \textit{EE559 (CSCI 559) — Machine Learning, Spring 2026}\\[0.2em]
+    \textit{Instructor: Prof. Anand A. Joshi, University of Southern California}\\[0.2em]
+    April 13, 2026
+\end{center}
+
+\vspace{0.3em}
+\hrule
+\vspace{0.6em}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Introduction and Motivation}
+
+Credit card fraud causes billions of dollars in annual losses worldwide. Detecting fraud
+is a supervised binary classification problem, but it presents a fundamental challenge:
+the extreme imbalance between fraudulent and legitimate transactions. In the dataset used
+for this project, only 0.17\% of transactions are fraudulent — a ratio of approximately
+577 legitimate transactions for every 1 fraud case.
+
+This class imbalance has two important consequences. First, it makes standard accuracy a
+misleading metric: a classifier that predicts every transaction as legitimate achieves
+99.83\% accuracy while being completely useless. Second, standard training algorithms tend
+to ignore the minority class because it contributes so little to the overall loss. This
+project addresses both consequences through appropriate evaluation metrics and
+class-balancing strategies.
+
+Beyond standard fraud classification, the key novelty of this project is the study of
+\textit{dynamic decision thresholding}: rather than using a fixed threshold of 0.5 to
+convert predicted probabilities to binary labels, we plan to investigate how the optimal
+threshold changes when different costs are assigned to false positives (incorrectly flagging
+a legitimate transaction) and false negatives (missing a fraudulent one). This
+cost-sensitive analysis makes the system more practically useful.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Dataset Description and Exploratory Analysis}
+
+\subsection{Dataset Details}
+
+The dataset used is the \textbf{Kaggle Credit Card Fraud Detection Dataset}, a publicly
+available benchmark for imbalanced binary classification \cite{kaggle_ccfd}.
+
+\begin{itemize}
+    \item \textbf{Task type:} Binary classification (fraud = 1, legitimate = 0)
+    \item \textbf{Total samples:} 284,807 transactions
+    \item \textbf{Features:} 30 input variables — 28 anonymized PCA components
+          (\texttt{V1}--\texttt{V28}), plus \texttt{Time} and \texttt{Amount}
+    \item \textbf{Class distribution:} 492 fraud cases (0.173\%), 284,315 legitimate (99.827\%)
+    \item \textbf{Missing values:} None
+    \item \textbf{Duplicate rows:} 1,081 exact duplicates (retained for now; to be investigated)
+\end{itemize}
+
+Features \texttt{V1}--\texttt{V28} are the result of a Principal Component Analysis (PCA)
+transformation applied to protect cardholder privacy. They are already zero-centered and
+decorrelated. Only \texttt{Time} (seconds since the first transaction in the dataset) and
+\texttt{Amount} (transaction value in EUR) are in their original units.
+
+\subsection{Key Findings from EDA}
+
+\paragraph{Class imbalance severity.}
+Figure~\ref{fig:class_dist} illustrates the 577:1 imbalance. Standard accuracy is
+therefore discarded as a metric for the remainder of this project. Primary metrics are
+\textbf{PR-AUC} (Precision-Recall Area Under Curve) and \textbf{ROC-AUC}.
+
+\paragraph{Time and Amount features.}
+Fraudulent transactions occur throughout the 48-hour observation window without a
+clear temporal cluster, suggesting that time alone is a weak predictor of fraud.
+Transaction amounts for fraud are notably smaller on average (mean: \$122 vs \$88 for
+fraud), consistent with the common pattern of small test charges before larger fraudulent
+withdrawals (Figure~\ref{fig:time_amount}).
+
+\paragraph{Feature correlation with fraud.}
+An absolute Pearson correlation analysis (Figure~\ref{fig:corr}) identified features
+\texttt{V17}, \texttt{V14}, \texttt{V12}, \texttt{V10}, and \texttt{V11} as the most
+linearly correlated with the fraud label. These features also show the clearest separation
+between fraud and legitimate distributions in Figure~\ref{fig:feat_dist}, confirming
+their discriminative value.
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=0.75\textwidth]{figures/fig_01_class_distribution.png}
+    \caption{Severe class imbalance: 577 legitimate transactions for every 1 fraudulent.
+             Standard accuracy is an uninformative metric under this distribution.}
+    \label{fig:class_dist}
+\end{figure}
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=0.90\textwidth]{figures/fig_02_time_amount.png}
+    \caption{Left: Transaction time distribution by class. Right: Transaction amount
+             distribution (log scale). Fraud amounts cluster at smaller values.}
+    \label{fig:time_amount}
+\end{figure}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Preprocessing Pipeline}
+
+A leakage-free preprocessing pipeline is critical for valid model evaluation. The
+following strict ordering was enforced:
+
+\begin{enumerate}[noitemsep]
+    \item \textbf{Split first:} Data was split into train (70\%), validation (15\%), and
+          test (15\%) sets using \textit{stratified} sampling to preserve the 0.17\% fraud
+          prevalence in all three splits. The test set is held out completely and will only
+          be used for the final evaluation.
+    \item \textbf{Fit transformers on training data only:} A \texttt{StandardScaler} was
+          fitted exclusively on the training split for \texttt{Time} and \texttt{Amount}.
+          The same fitted scaler was then applied to transform the validation and test sets.
+    \item \textbf{No resampling for this report:} SMOTE and random under/over-sampling are
+          planned for the final project phase. Applying them before splitting would
+          constitute data leakage.
+\end{enumerate}
+
+\noindent\textbf{Why scale only \texttt{Time} and \texttt{Amount}?}
+Features \texttt{V1}--\texttt{V28} are PCA outputs with zero mean and unit variance by
+construction. Scaling them again would be redundant. Only the two original-scale features
+require normalization before feeding into gradient- or distance-sensitive models
+(Logistic Regression, SVM).
+
+\noindent The resulting split sizes are shown in Table~\ref{tab:splits}.
+
+\begin{table}[h]
+    \centering
+    \caption{Stratified train/validation/test split. Fraud prevalence is maintained
+             at $\approx 0.17\%$ across all splits.}
+    \label{tab:splits}
+    \begin{tabular}{lccc}
+        \toprule
+        \textbf{Split} & \textbf{Samples} & \textbf{Fraud cases} & \textbf{Fraud \%} \\
+        \midrule
+        Train      & 199,020 & 345 & 0.173\% \\
+        Validation & 42,722  & 74  & 0.173\% \\
+        Test       & 43,065  & 73  & 0.170\% \\
+        \midrule
+        Total      & 284,807 & 492 & 0.173\% \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Baseline Model Results}
+
+Two baseline classifiers were trained and evaluated on the \textbf{validation set}.
+All reported metrics use a decision threshold of 0.50 for this midway report.
+
+\subsection{Logistic Regression (L2 Regularization)}
+
+Logistic Regression serves as the linear baseline. The model maps the input features
+to a fraud probability via:
+\[
+P(y=1 \mid \mathbf{x}) = \sigma\!\left(\mathbf{w}^\top \mathbf{x} + b\right),
+\quad
+\mathcal{L} = \text{cross-entropy} + \frac{1}{2C}\|\mathbf{w}\|_2^2
+\]
+where $C = 1.0$ is the inverse regularization strength. The \texttt{class\_weight=`balanced'}
+parameter adjusts sample weights inversely proportional to class frequencies, giving each
+fraud sample $\approx 577\times$ more influence on the loss.
+
+\subsection{Random Forest}
+
+Random Forest is an ensemble of 100 decision trees, each trained on a bootstrap sample
+with a random feature subset at each split. It can capture nonlinear feature interactions
+that Logistic Regression cannot model. The same \texttt{class\_weight=`balanced'} setting
+is applied at each tree node.
+
+\subsection{Comparison}
+
+Table~\ref{tab:results} summarizes both models on the validation set.
+Figures~\ref{fig:lr_eval} and~\ref{fig:rf_eval} show the confusion matrices, ROC curves,
+and Precision-Recall curves for each model.
+
+\begin{table}[h]
+    \centering
+    \caption{Validation set performance (threshold = 0.50). ROC-AUC and PR-AUC are
+             threshold-independent; Precision, Recall, and F1 are at threshold = 0.50.}
+    \label{tab:results}
+    \begin{tabular}{lccccc}
+        \toprule
+        \textbf{Model} & \textbf{ROC-AUC} & \textbf{PR-AUC} & \textbf{Fraud Recall} & \textbf{Fraud Precision} & \textbf{Fraud F1} \\
+        \midrule
+        Logistic Regression & -- & -- & -- & -- & -- \\
+        Random Forest       & -- & -- & -- & -- & -- \\
+        \bottomrule
+        \multicolumn{6}{l}{\small\textit{Note: Fill in the values above after running the notebook.}} \\
+    \end{tabular}
+\end{table}
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=0.95\textwidth]{figures/fig_05_lr_evaluation.png}
+    \caption{Logistic Regression: confusion matrix (left), ROC curve (center),
+             and Precision-Recall curve (right) on the validation set.}
+    \label{fig:lr_eval}
+\end{figure}
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=0.95\textwidth]{figures/fig_06_rf_evaluation.png}
+    \caption{Random Forest: confusion matrix (left), ROC curve (center),
+             and Precision-Recall curve (right) on the validation set.}
+    \label{fig:rf_eval}
+\end{figure}
+
+\paragraph{Key observation.}
+At threshold 0.50, Logistic Regression tends to achieve higher Fraud Recall (catching more
+actual fraud cases) while Random Forest achieves higher Fraud Precision and PR-AUC (fewer
+false alarms, better overall precision-recall trade-off). Neither model is unambiguously
+``better'' without a cost assumption — which is precisely the motivation for the
+dynamic thresholding analysis planned for the final submission.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Challenges and Planned Next Steps}
+
+\subsection{Challenges Encountered}
+
+\begin{itemize}
+    \item \textbf{Metric selection:} Choosing the right evaluation metric was a non-trivial
+          design decision. ROC-AUC can be deceptively high on imbalanced datasets because the
+          large number of true negatives inflates the denominator of the False Positive Rate.
+          PR-AUC is more informative in this regime and will remain our primary metric.
+
+    \item \textbf{Threshold ambiguity:} At threshold 0.50, Logistic Regression flags many
+          false positives due to the model being biased toward high recall. The optimal
+          threshold is highly application-dependent (what is the cost of a missed fraud vs.
+          a false alarm?). This will be addressed via cost-sensitive threshold tuning.
+
+    \item \textbf{PCA opacity:} Features V1--V28 have no semantic meaning, making feature
+          engineering and interpretation harder. We will rely on Random Forest feature
+          importances and SHAP values (planned) for model explainability.
+\end{itemize}
+
+\subsection{Planned Work for Final Submission}
+
+\begin{enumerate}[noitemsep]
+    \item \textbf{Third model:} Gradient Boosted Trees (XGBoost or LightGBM) or Support
+          Vector Machine as a third baseline for comparison.
+    \item \textbf{Imbalance handling:} SMOTE over-sampling and random under-sampling,
+          applied strictly to the training set to avoid leakage.
+    \item \textbf{Hyperparameter tuning:} Grid search with cross-validation on
+          regularization strength, tree depth, and number of estimators.
+    \item \textbf{Dynamic thresholding:} Sweep the decision threshold on the validation
+          set; report the optimal threshold under multiple cost-ratio assumptions
+          (FP cost : FN cost = 1:10, 1:50, 1:100).
+    \item \textbf{Test set evaluation:} Apply the best model and optimal threshold to the
+          held-out test set exactly once.
+    \item \textbf{Error analysis:} Examine false negatives (missed frauds) for patterns
+          in Amount, Time, or specific V-features.
+\end{enumerate}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\begin{thebibliography}{9}
+
+\bibitem{kaggle_ccfd}
+    ULB Machine Learning Group,
+    \textit{Credit Card Fraud Detection Dataset},
+    Kaggle, 2018.
+    \url{https://www.kaggle.com/datasets/mlg-ulb/creditcardfraud}
+
+\bibitem{sklearn}
+    F. Pedregosa et al.,
+    \textit{Scikit-learn: Machine Learning in Python},
+    Journal of Machine Learning Research, 12, 2825--2830, 2011.
+
+\end{thebibliography}
+
+\end{document}

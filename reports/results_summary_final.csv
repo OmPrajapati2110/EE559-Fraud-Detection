@@ -1,0 +1,5 @@
+Model,Val PR-AUC,Val ROC-AUC,F1-opt Threshold,Val F1,Val Recall,Val Precision,Cost-opt Threshold,Min Val Cost (€)
+LR (balanced),0.752,0.986,0.99,0.7273,0.8649,0.6275,0.985,5380
+RF (balanced),0.8637,0.9514,0.192,0.8767,0.8649,0.8889,0.044,5080
+GBT (balanced),0.784,0.9822,0.951,0.8531,0.8243,0.8841,0.837,6580
+GBT (SMOTE),0.8533,0.9729,0.96,0.8794,0.8378,0.9254,0.251,6050

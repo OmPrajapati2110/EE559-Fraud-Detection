@@ -1,0 +1,162 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  MEMBER
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum NotificationChannel {
+  EMAIL
+  SLACK
+  GOOGLE_CALENDAR
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+model User {
+  id                 String   @id @default(cuid())
+  email              String   @unique
+  name               String
+  passwordHash       String?
+  role               Role     @default(MEMBER)
+  slackUserId        String?
+  googleRefreshToken String?  // AES-256 encrypted
+  isActive           Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  assignments    ChoreAssignment[]
+  historyEntries ChoreHistory[]    @relation("CompletedBy")
+  notifications  Notification[]
+  refreshTokens  RefreshToken[]
+
+  @@map("users")
+}
+
+model RefreshToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+model Chore {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  priority    Priority @default(MEDIUM)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  recurrenceRule RecurrenceRule?
+  assignments    ChoreAssignment[]
+  history        ChoreHistory[]
+
+  @@map("chores")
+}
+
+model RecurrenceRule {
+  id            String    @id @default(cuid())
+  choreId       String    @unique
+  chore         Chore     @relation(fields: [choreId], references: [id], onDelete: Cascade)
+  intervalWeeks Int       @default(2)
+  dayOfWeek     Int       @default(1) // 0=Sun, 1=Mon, ..., 6=Sat
+  startDate     DateTime
+  endDate       DateTime?
+  createdAt     DateTime  @default(now())
+
+  @@map("recurrence_rules")
+}
+
+model ChoreAssignment {
+  id                 String    @id @default(cuid())
+  choreId            String
+  chore              Chore     @relation(fields: [choreId], references: [id], onDelete: Cascade)
+  userId             String
+  user               User      @relation(fields: [userId], references: [id])
+  dueDate            DateTime
+  isCompleted        Boolean   @default(false)
+  completedAt        DateTime?
+  completedByAdminId String?
+  googleEventId      String?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  notifications Notification[]
+  historyEntry  ChoreHistory?
+
+  @@unique([choreId, dueDate]) // prevent duplicate occurrences
+  @@index([dueDate])
+  @@index([userId])
+  @@index([choreId])
+  @@map("chore_assignments")
+}
+
+model ChoreHistory {
+  id            String          @id @default(cuid())
+  choreId       String
+  chore         Chore           @relation(fields: [choreId], references: [id])
+  assignmentId  String          @unique
+  assignment    ChoreAssignment @relation(fields: [assignmentId], references: [id])
+  completedById String
+  completedBy   User            @relation("CompletedBy", fields: [completedById], references: [id])
+  adminId       String
+  completedAt   DateTime
+  dueDate       DateTime
+  notes         String?
+  createdAt     DateTime        @default(now())
+
+  @@index([choreId])
+  @@index([completedById])
+  @@map("chore_history")
+}
+
+model Notification {
+  id           String              @id @default(cuid())
+  userId       String
+  user         User                @relation(fields: [userId], references: [id])
+  assignmentId String
+  assignment   ChoreAssignment     @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  channel      NotificationChannel
+  status       NotificationStatus  @default(PENDING)
+  scheduledFor DateTime
+  sentAt       DateTime?
+  errorMessage String?
+  createdAt    DateTime            @default(now())
+
+  @@index([scheduledFor, status])
+  @@index([userId])
+  @@map("notifications")
+}
+
+model Config {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+
+  @@map("config")
+}
