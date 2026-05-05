@@ -59,7 +59,7 @@ Forest OOD detection evaluated and compared.
 **1. Clone the repository**
 
 ```bash
-git clone https://github.com/omsureshprajapati/EE559-Fraud-Detection.git
+git clone https://github.com/OmPrajapati2110/EE559-Fraud-Detection.git
 cd EE559-Fraud-Detection
 ```
 
