@@ -35,6 +35,11 @@ build/
 reports/figures/
 reports/results_summary.csv
 
+# Video recordings — hosted on Google Drive
+*.mp4
+*.mov
+*.avi
+
 # LaTeX auxiliary files
 reports/*.aux
 reports/*.log

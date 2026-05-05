@@ -5,6 +5,7 @@
 \usepackage{graphicx}
 \usepackage{booktabs}
 \usepackage{caption}
+\usepackage{subcaption}
 \usepackage{cite}
 \usepackage{url}
 \usepackage[T1]{fontenc}
@@ -13,6 +14,7 @@
 \setlist[itemize]{noitemsep, topsep=2pt}
 \setlist[enumerate]{noitemsep, topsep=2pt}
 \usepackage{eurosym}
+\usepackage{stfloats}
 \usepackage[colorlinks=false, pdfborder={0 0 0}]{hyperref}
 
 % ─────────────────────────────────────────────────────────────────────────────
@@ -206,13 +208,29 @@ calibration. GBT-SMOTE achieves the highest F1 (0.879) but at a lower PR-AUC
 
 \subsection{Threshold Tuning and Cost Analysis}
 
-Fig.~\ref{fig:threshold} shows F1, Precision, and Recall vs.\ threshold. The
-DT curve confirms high instability relative to RF. Fig.~\ref{fig:cost} shows
-business cost vs.\ threshold. Because $C_{\text{FN}}/C_{\text{FP}} = 50$,
-cost-optimal thresholds are substantially lower than F1-optimal thresholds
-for all models (Table~\ref{tab:cost}). For RF, the cost-optimal threshold
-drops from 0.192 to 0.044, trading 37 additional FP for one fewer FN
-(\euro130 saving).
+Fig.~\ref{fig:threshold} shows F1, Precision, and Recall vs.\ threshold for all
+models. The DT curve confirms high instability relative to RF. Fig.~\ref{fig:cost}
+shows business cost vs.\ threshold. Because $C_{\text{FN}}/C_{\text{FP}} = 50$,
+cost-optimal thresholds are substantially lower than F1-optimal thresholds for all
+models (Table~\ref{tab:cost}). For RF, the cost-optimal threshold drops from 0.192
+to 0.044, trading 37 additional FP for one fewer FN (\euro130 saving).
+
+\textbf{Why RF thresholds are far lower than other models.}
+RF's F1-optimal threshold (0.192) and cost-optimal threshold (0.044) are
+substantially lower than every other model's (Table~\ref{tab:cost}).
+This is not a modelling error: it reflects a well-known property of Random
+Forest on imbalanced data. RF computes class probabilities by averaging votes
+across 100 trees; because fraud represents only 0.17\% of training samples,
+most trees vote ``legitimate'' for every transaction, compressing the raw
+probability output toward zero even for genuine fraud. A score of 0.192 from
+RF therefore carries the same discriminative signal as a score near 0.95 from
+LR or GBT --- the scales are simply not comparable across model families.
+The high PR-AUC (0.864) confirms that RF's scores are excellent for
+\textit{ranking} transactions by fraud risk; they are just not calibrated
+to represent true probabilities. This is precisely why threshold tuning on a
+held-out validation set is essential: without it, applying the default
+threshold of 0.50 to RF would miss the vast majority of frauds despite
+the model's strong discriminative power.
 
 \begin{table}[t]
   \centering
@@ -235,14 +253,14 @@ drops from 0.192 to 0.044, trading 37 additional FP for one fewer FN
   \centering
   \includegraphics[width=\textwidth]{figures/fig_11_threshold_tuning.png}
   \caption{F1-score, Precision, and Recall vs.\ threshold for all five supervised models
-           (validation set). Dots mark the F1-maximising threshold. The DT curve shows
+           (validation set). Dots mark the F1-maximising threshold; the DT curve shows
            higher instability than RF, illustrating the benefit of ensemble averaging.}
   \label{fig:threshold}
 \end{figure*}
 
 \begin{figure*}[!t]
   \centering
-  \includegraphics[width=0.96\textwidth]{figures/fig_12_cost_analysis.png}
+  \includegraphics[width=\textwidth]{figures/fig_12_cost_analysis.png}
   \caption{Left: total business cost vs.\ threshold (validation set).
            Right: F1-optimal vs.\ cost-optimal thresholds --- cost-optimal thresholds
            are consistently lower due to the 50:1 FN/FP cost ratio.}
@@ -253,9 +271,9 @@ drops from 0.192 to 0.044, trading 37 additional FP for one fewer FN
 \label{sec:test}
 
 RF (balanced) was selected as the best model by validation PR-AUC\,=\,0.864.
-Table~\ref{tab:test} shows test results; Fig.~\ref{fig:test_eval} shows
-the full evaluation. At the F1-optimal threshold, RF catches 61 of 74 frauds
-(82.4\% recall) with only 11 false alarms (total cost: \euro6,610).
+Table~\ref{tab:test} shows test results; Fig.~\ref{fig:test_eval} shows the full
+evaluation. At the F1-optimal threshold, RF catches 61 of 74 frauds (82.4\% recall)
+with only 11 false alarms (total cost: \euro6,610).
 
 \begin{table}[t]
   \centering
@@ -273,20 +291,12 @@ the full evaluation. At the F1-optimal threshold, RF catches 61 of 74 frauds
   \end{tabular}
 \end{table}
 
-\begin{figure*}[!t]
-  \centering
-  \includegraphics[width=\textwidth]{figures/fig_13_final_test_evaluation.png}
-  \caption{RF (balanced) at threshold 0.192 on the held-out test set.
-           Left: confusion matrix (61\,TP, 11\,FP, 13\,FN, 42,637\,TN).
-           Centre: ROC curve (AUC\,=\,0.9376). Right: PR curve (AUC\,=\,0.8116).}
-  \label{fig:test_eval}
-\end{figure*}
-
 \subsection{Out-of-Distribution Detection}
 
 Isolation Forest was trained on 199,012 legitimate training transactions with
 contamination\,=\,0.0017. Table~\ref{tab:ood} compares it with RF on the test
-set. Fig.~\ref{fig:ood} shows the anomaly score distribution and PR curve.
+set. Fig.~\ref{fig:test_eval} and Fig.~\ref{fig:ood} show the full evaluation
+and OOD score distributions respectively.
 
 \begin{table}[t]
   \centering
@@ -324,7 +334,16 @@ detector would have an advantage on.
 
 \begin{figure*}[!t]
   \centering
-  \includegraphics[width=0.96\textwidth]{figures/fig_15_ood_isolation_forest.png}
+  \includegraphics[width=\textwidth]{figures/fig_13_final_test_evaluation.png}
+  \caption{RF (balanced) at threshold 0.192 on the held-out test set.
+           Left: confusion matrix (61\,TP, 11\,FP, 13\,FN, 42,637\,TN).
+           Centre: ROC curve (AUC\,=\,0.9376). Right: PR curve (AUC\,=\,0.8116).}
+  \label{fig:test_eval}
+\end{figure*}
+
+\begin{figure*}[!t]
+  \centering
+  \includegraphics[width=\textwidth]{figures/fig_15_ood_isolation_forest.png}
   \caption{Left: Isolation Forest anomaly score distribution for legitimate vs.\ fraud
            transactions (validation set). Right: PR curves for Isolation Forest vs.\ RF
            --- the large gap confirms that supervised learning far outperforms unsupervised
@@ -372,6 +391,10 @@ Combining RF and Isolation Forest via a meta-classifier could improve recall
 on novel fraud without degrading precision. SHAP-based
 explanations~\cite{lundberg2017unified}, time-aware cross-validation, and
 online learning~\cite{pozzolo2014} for distribution shift are natural extensions.
+
+\subsection{Presentation Video}
+The 15-minute final presentation recording is available at:\\
+\url{https://drive.google.com/file/d/1QlLBVGV7MoaHBmcUdLSXO0xuPDPZmYue/view?usp=drive_link}
 
 % ─────────────────────────────────────────────────────────────────────────────
 \section{Conclusion}
