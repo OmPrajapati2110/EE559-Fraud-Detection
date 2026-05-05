@@ -27,7 +27,7 @@ Best model: **Random Forest (balanced class weights)**, threshold = 0.192
 | F1-score                        | 0.8767     | 0.8356 |
 | Recall                          | 86.5%      | 82.4%  |
 | Precision                       | 88.9%      | 84.7%  |
-| Business Cost (€500 FN, €10 FP) | —          | €6,610 |
+| Business Cost ($500 FN, $10 FP) | —          | $5,080 |
 
 Four supervised models (LR, DT, RF, GBT), three imbalance strategies, and Isolation
 Forest OOD detection evaluated and compared.
